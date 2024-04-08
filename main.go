@@ -1,21 +1,62 @@
 package main
 
 import (
-	"log"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
+	"os"
 )
 
+type UrlMapping struct {
+	Host string `json:"host"`
+	Port uint16 `json:"port"`
+}
+
+type Config struct {
+	Mapping    []UrlMapping `json:"mapping"`
+	ListenPort uint16       `json:"listen_port"`
+}
+
+func ReadConfig(fname string) (Config, error) {
+	var config Config
+	b, err := os.ReadFile(fname)
+	if err != nil {
+		return Config{}, err
+	}
+	err = json.Unmarshal(b, &config)
+	if err != nil {
+		return Config{}, err
+	}
+	return config, nil
+}
+
 func main() {
-	remote, err := url.Parse("http://google.com")
+	if len(os.Args) != 2 {
+		fmt.Println("Usage: reverse_proxy <config_file>")
+		return
+	}
+	config_file := os.Args[1]
+	config, err := ReadConfig(config_file)
 	if err != nil {
 		panic(err)
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(remote)
-	http.Handle("/", &ProxyHandler{proxy, remote})
-	err = http.ListenAndServe(":8080", nil)
+	proxy := httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			for _, m := range config.Mapping {
+				if m.Host == r.In.URL.Host {
+					host := fmt.Sprintf("10.0.0.1:%d", m.Port)
+					u := *r.In.URL
+					u.Host = host
+					r.SetURL(&u)
+				}
+			}
+		},
+	}
+
+	http.Handle("/", &ProxyHandler{&proxy, &config})
+	err = http.ListenAndServe(fmt.Sprintf(":%d", config.ListenPort), nil)
 	if err != nil {
 		panic(err)
 	}
@@ -23,11 +64,9 @@ func main() {
 
 type ProxyHandler struct {
 	p      *httputil.ReverseProxy
-	remote *url.URL
+	config *Config
 }
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Println(r.URL)
-	r.Host = ph.remote.Host
 	ph.p.ServeHTTP(w, r)
 }
