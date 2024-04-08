@@ -55,7 +55,7 @@ func main() {
 		},
 	}
 
-	http.Handle("/", &ProxyHandler{&proxy, &config})
+	http.Handle("/", &ProxyHandler{&proxy})
 	err = http.ListenAndServe(fmt.Sprintf(":%d", config.ListenPort), nil)
 	if err != nil {
 		panic(err)
@@ -63,8 +63,7 @@ func main() {
 }
 
 type ProxyHandler struct {
-	p      *httputil.ReverseProxy
-	config *Config
+	p *httputil.ReverseProxy
 }
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
