@@ -35,15 +35,15 @@ type Config struct {
 	HttpsPort uint16       `json:"https_port"`
 }
 
-func readConfig(fname string) (Config, error) {
-	var config Config
+func readConfig(fname string) (*Config, error) {
+	config := &Config{}
 	b, err := os.ReadFile(fname)
 	if err != nil {
-		return Config{}, err
+		return nil, err
 	}
 	err = json.Unmarshal(b, &config)
 	if err != nil {
-		return Config{}, err
+		return nil, err
 	}
 	return config, nil
 }
@@ -63,10 +63,10 @@ func (c *Config) LoadTLSConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func makeServer(port uint16, proxy *httputil.ReverseProxy, tlsConfig *tls.Config) *http.Server {
+func makeServer(port uint16, proxy *httputil.ReverseProxy, config *Config, tlsConfig *tls.Config) *http.Server {
 	return &http.Server{
 		Addr:           fmt.Sprintf("localhost:%d", port),
-		Handler:        &ProxyHandler{proxy},
+		Handler:        &ProxyHandler{proxy, config},
 		TLSConfig:      tlsConfig,
 		ReadTimeout:    time.Second * 15,
 		WriteTimeout:   time.Second * 15,
@@ -117,8 +117,8 @@ func main() {
 			return
 		},
 	}
-	httpServer := makeServer(config.HttpPort, proxy, nil)
-	httpsServer := makeServer(config.HttpsPort, proxy, tlsConfig)
+	httpServer := makeServer(config.HttpPort, proxy, config, nil)
+	httpsServer := makeServer(config.HttpsPort, proxy, config, tlsConfig)
 
 	var isOtherDone *atomic.Bool
 	shutdownComplete := make(chan bool)
@@ -132,8 +132,20 @@ func main() {
 
 type ProxyHandler struct {
 	p *httputil.ReverseProxy
+	c *Config
 }
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ph.p.ServeHTTP(w, r)
+	match := false
+	for _, m := range ph.c.Mapping {
+		if m.matches(r.URL) {
+			match = true
+			break
+		}
+	}
+	if match {
+		ph.p.ServeHTTP(w, r)
+	} else {
+		w.WriteHeader(http.StatusBadGateway)
+	}
 }
