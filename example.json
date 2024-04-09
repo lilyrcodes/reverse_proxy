@@ -1,0 +1,26 @@
+{
+	"http_port": 3000,
+	"https_port": 3001,
+	"mapping": [
+		{
+			"host": "example.com",
+			"scheme": "http",
+			"port": 1234
+		},
+		{
+			"host": "example.com",
+			"scheme": "https",
+			"port": 1235
+		},
+		{
+			"host": "foo.example.com",
+			"scheme": "http",
+			"port": 1236
+		},
+		{
+			"host": "foo.example.com",
+			"scheme": "https",
+			"port": 1237
+		}
+	]
+}

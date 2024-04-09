@@ -7,11 +7,12 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"time"
 )
 
 type UrlMapping struct {
 	Host   string `json:"host"`
-	Scheme string `json:"schema"`
+	Scheme string `json:"scheme"`
 	Port   uint16 `json:"port"`
 }
 
@@ -20,8 +21,9 @@ func (m *UrlMapping) matches(u *url.URL) bool {
 }
 
 type Config struct {
-	Mapping    []UrlMapping `json:"mapping"`
-	ListenPort uint16       `json:"listen_port"`
+	Mapping   []UrlMapping `json:"mapping"`
+	HttpPort  uint16       `json:"http_port"`
+	HttpsPort uint16       `json:"https_port"`
 }
 
 func ReadConfig(fname string) (Config, error) {
@@ -63,9 +65,18 @@ func main() {
 			return
 		},
 	}
+	http_server := http.Server{
+		Addr:    fmt.Sprintf("localhost:%d", config.HttpPort),
+		Handler: &ProxyHandler{&proxy},
 
-	http.Handle("/", &ProxyHandler{&proxy})
-	err = http.ListenAndServe(fmt.Sprintf(":%d", config.ListenPort), nil)
+		TLSConfig:   nil,
+		ReadTimeout: time.Second * 15,
+
+		WriteTimeout: time.Second * 15,
+
+		MaxHeaderBytes: 2 >> 16,
+	}
+	err = http_server.ListenAndServe()
 	if err != nil {
 		panic(err)
 	}
