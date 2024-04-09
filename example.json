@@ -1,6 +1,16 @@
 {
 	"http_port": 3000,
 	"https_port": 3001,
+	"tls_files": [
+		{
+			"cert_file": "/etc/letsencrypt/live/example.com/cert.pem",
+			"key_file": "/etc/letsencrypt/live/example.com/privkey.pem"
+		},
+		{
+			"cert_file": "/etc/letsencrypt/live/myownpersonaldomain.com/cert.pem",
+			"key_file": "/etc/letsencrypt/live/myownpersonaldomain.com/privkey.pem"
+		}
+	],
 	"mapping": [
 		{
 			"host": "example.com",
@@ -13,12 +23,12 @@
 			"port": 1235
 		},
 		{
-			"host": "foo.example.com",
+			"host": "myownpersonaldomain.com",
 			"scheme": "http",
 			"port": 1236
 		},
 		{
-			"host": "foo.example.com",
+			"host": "myownpersonaldomain.com",
 			"scheme": "https",
 			"port": 1237
 		}
