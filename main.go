@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 )
 
 type UrlMapping struct {
-	Host string `json:"host"`
-	Port uint16 `json:"port"`
+	Host   string `json:"host"`
+	Scheme string `json:"schema"`
+	Port   uint16 `json:"port"`
+}
+
+func (m *UrlMapping) matches(u *url.URL) bool {
+	return m.Host == u.Host && m.Scheme == u.Scheme
 }
 
 type Config struct {
@@ -45,13 +51,16 @@ func main() {
 	proxy := httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			for _, m := range config.Mapping {
-				if m.Host == r.In.URL.Host {
-					host := fmt.Sprintf("10.0.0.1:%d", m.Port)
+				if m.matches(r.In.URL) {
+					host := fmt.Sprintf("localhost:%d", m.Port)
 					u := *r.In.URL
 					u.Host = host
 					r.SetURL(&u)
+					r.SetXForwarded()
+					return
 				}
 			}
+			return
 		},
 	}
 
