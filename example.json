@@ -1,6 +1,5 @@
 {
-	"http_port": 3000,
-	"https_port": 3001,
+	"port": 3000,
 	"tls_files": [
 		{
 			"cert_file": "/etc/letsencrypt/live/example.com/cert.pem",
@@ -14,22 +13,22 @@
 	"mapping": [
 		{
 			"host": "example.com",
-			"scheme": "http",
+			"use_tls": false,
 			"port": 1234
 		},
 		{
 			"host": "example.com",
-			"scheme": "https",
+			"use_tls": true,
 			"port": 1235
 		},
 		{
 			"host": "myownpersonaldomain.com",
-			"scheme": "http",
+			"use_tls": false,
 			"port": 1236
 		},
 		{
 			"host": "myownpersonaldomain.com",
-			"scheme": "https",
+			"use_tls": true,
 			"port": 1237
 		}
 	]

@@ -1,26 +1,25 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"os"
-	"sync/atomic"
+	"strings"
 	"time"
 )
 
 type UrlMapping struct {
 	Host   string `json:"host"`
-	Scheme string `json:"scheme"`
+	UseTls bool   `json:"use_tls"`
 	Port   uint16 `json:"port"`
 }
 
-func (m *UrlMapping) matches(u *url.URL) bool {
-	return m.Host == u.Host && m.Scheme == u.Scheme
+func (m *UrlMapping) matches(r *http.Request) bool {
+	hostName := strings.Split(r.Host, ":")[0]
+	return m.Host == hostName && (r.TLS != nil) == m.UseTls
 }
 
 type TlsFiles struct {
@@ -29,10 +28,9 @@ type TlsFiles struct {
 }
 
 type Config struct {
-	Mapping   []UrlMapping `json:"mapping"`
-	TlsFiles  []TlsFiles   `json:"tls_files"`
-	HttpPort  uint16       `json:"http_port"`
-	HttpsPort uint16       `json:"https_port"`
+	Mapping  []UrlMapping `json:"mapping"`
+	TlsFiles []TlsFiles   `json:"tls_files"`
+	Port     uint16       `json:"port"`
 }
 
 func readConfig(fname string) (*Config, error) {
@@ -75,18 +73,6 @@ func makeServer(port uint16, proxy *httputil.ReverseProxy, config *Config, tlsCo
 
 }
 
-func shutdownFunc(other *http.Server, isOtherDone *atomic.Bool, complete chan bool) func() {
-	return func() {
-		if !isOtherDone.Swap(true) {
-			if err := other.Shutdown(context.Background()); err != nil {
-				panic(err)
-			}
-		} else {
-			close(complete)
-		}
-	}
-}
-
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Println("Usage: reverse_proxy <config_file>")
@@ -105,11 +91,18 @@ func main() {
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			for _, m := range config.Mapping {
-				if m.matches(r.In.URL) {
+				if m.matches(r.In) {
 					host := fmt.Sprintf("localhost:%d", m.Port)
 					u := *r.In.URL
 					u.Host = host
+					r.Out.Host = host
+					r.Out.TLS = r.In.TLS
 					r.SetURL(&u)
+					if r.In.TLS == nil {
+						r.Out.URL.Scheme = "http"
+					} else {
+						r.Out.URL.Scheme = "https"
+					}
 					r.SetXForwarded()
 					return
 				}
@@ -117,17 +110,12 @@ func main() {
 			return
 		},
 	}
-	httpServer := makeServer(config.HttpPort, proxy, config, nil)
-	httpsServer := makeServer(config.HttpsPort, proxy, config, tlsConfig)
+	httpServer := makeServer(config.Port, proxy, config, tlsConfig)
 
-	var isOtherDone *atomic.Bool
-	shutdownComplete := make(chan bool)
-	httpServer.RegisterOnShutdown(shutdownFunc(httpsServer, isOtherDone, shutdownComplete))
-	httpsServer.RegisterOnShutdown(shutdownFunc(httpServer, isOtherDone, shutdownComplete))
-
-	go httpServer.ListenAndServe()
-	go httpsServer.ListenAndServeTLS("", "")
-	<-shutdownComplete
+	err = httpServer.ListenAndServe()
+	if err != nil {
+		panic(err)
+	}
 }
 
 type ProxyHandler struct {
@@ -137,15 +125,26 @@ type ProxyHandler struct {
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	match := false
+	fmt.Print("Host: ", r.URL.Host, "Scheme: ", r.URL.Scheme, "Hostname: ", r.URL.Hostname())
+	fmt.Println()
+	if r.TLS != nil {
+		fmt.Println("TLS connection")
+	} else {
+		fmt.Println("Non-TLS connection")
+	}
+	fmt.Print("Host: ", r.Host, "Hostname: ", r.URL.Hostname())
+	fmt.Println()
 	for _, m := range ph.c.Mapping {
-		if m.matches(r.URL) {
+		if m.matches(r) {
 			match = true
 			break
 		}
 	}
 	if match {
 		ph.p.ServeHTTP(w, r)
+		fmt.Printf("Redirecting URL: %s\n", r.URL.String())
 	} else {
 		w.WriteHeader(http.StatusBadGateway)
+		fmt.Printf("Error serving URL: %s\n", r.URL.String())
 	}
 }
